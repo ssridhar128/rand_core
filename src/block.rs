@@ -136,17 +136,19 @@ pub trait CryptoGenerator: Generator {}
 #[derive(Clone)]
 pub struct BlockRng<G: Generator> {
     results: G::Output,
-    index: usize,
     /// The *core* part of the RNG, implementing the `generate` function.
     pub core: G,
 }
 
 // Custom Debug implementation that does not expose the contents of `results`.
-impl<G: Generator + fmt::Debug> fmt::Debug for BlockRng<G> {
+impl<W: Word, const N: usize, G> fmt::Debug for BlockRng<G>
+where
+    G: Generator<Output = [W; N]> + fmt::Debug,
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("BlockRng")
             .field("core", &self.core)
-            .field("index", &self.index)
+            .field("index", &self.index())
             .finish()
     }
 }
@@ -157,20 +159,36 @@ impl<G: Generator> Drop for BlockRng<G> {
     }
 }
 
-impl<W: Copy + Default, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
+impl<W: Word + Default, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     /// Create a new `BlockRng` from an existing RNG implementing
     /// `Generator`. Results will be generated on first use.
     #[inline]
     pub fn new(core: G) -> BlockRng<G> {
-        BlockRng {
-            core,
-            index: N,
-            results: [W::default(); N],
+        let mut results = [W::default(); N];
+        results[0] = W::from_usize(N);
+        BlockRng { core, results }
+    }
+
+    /// Reconstruct from a core and a remaining-results buffer.
+    ///
+    /// This may be used to deserialize using a `core` and the output of
+    /// [`Self::remaining_results`].
+    ///
+    /// Returns `None` if `remaining_results` is too long.
+    pub fn reconstruct(core: G, remaining_results: &[W]) -> Option<Self> {
+        let mut results = [W::default(); N];
+        if remaining_results.len() < N {
+            let index = N - remaining_results.len();
+            results[index..].copy_from_slice(remaining_results);
+            results[0] = W::from_usize(index);
+            Some(BlockRng { results, core })
+        } else {
+            None
         }
     }
 }
 
-impl<W: Clone, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
+impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     /// Get the index into the result buffer.
     ///
     /// If this is equal to or larger than the size of the result buffer then
@@ -178,34 +196,66 @@ impl<W: Clone, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     /// results.
     #[inline(always)]
     pub fn index(&self) -> usize {
-        self.index
+        self.results[0].into_usize()
+    }
+
+    #[inline(always)]
+    fn set_index(&mut self, index: usize) {
+        debug_assert!(0 < index && index <= N);
+        self.results[0] = W::from_usize(index);
     }
 
     /// Reset the number of available results.
     /// This will force a new set of results to be generated on next use.
     #[inline]
     pub fn reset(&mut self) {
-        self.index = N;
+        self.set_index(N);
     }
 
-    /// Generate a new set of results immediately, setting the index to the
-    /// given value.
+    /// Updates the index and buffer contents
+    ///
+    /// If `index == 0`, this marks the buffer as "empty", causing generation on
+    /// next use.
+    ///
+    /// If `index > 0`, this generates a new block immediately then sets the
+    /// index.
     #[inline]
     pub fn generate_and_set(&mut self, index: usize) {
+        if index == 0 {
+            self.set_index(N);
+            return;
+        }
+
         assert!(index < N);
         self.core.generate(&mut self.results);
-        self.index = index;
+        self.set_index(index);
+    }
+
+    /// Access the unused part of the results buffer
+    ///
+    /// The length of the returned slice is guaranteed to be less than the
+    /// length of `<Self as Generator>::Output` (i.e. less than `N` where
+    /// `Output = [W; N]`).
+    ///
+    /// This is a low-level interface intended for serialization.
+    /// Results are not marked as consumed.
+    #[inline]
+    pub fn remaining_results(&self) -> &[W] {
+        let index = self.index();
+        &self.results[index..]
     }
 
     /// Generate the next word (e.g. `u32`)
     #[inline]
     pub fn next_word(&mut self) -> W {
-        if self.index >= N {
-            self.generate_and_set(0);
+        let mut index = self.index();
+        if index >= N {
+            self.core.generate(&mut self.results);
+            index = 0;
         }
 
-        let value = self.results[self.index].clone();
-        self.index += 1;
+        let value = self.results[index];
+        self.set_index(index + 1);
         value
     }
 }
@@ -214,25 +264,24 @@ impl<const N: usize, G: Generator<Output = [u32; N]>> BlockRng<G> {
     /// Generate a `u64` from two `u32` words
     #[inline]
     pub fn next_u64_from_u32(&mut self) -> u64 {
-        let read_u64 = |results: &[u32], index| {
-            let data = &results[index..=index + 1];
-            (u64::from(data[1]) << 32) | u64::from(data[0])
-        };
-
-        let index = self.index;
+        let index = self.index();
+        let (lo, hi);
         if index < N - 1 {
-            self.index += 2;
-            // Read an u64 from the current index
-            read_u64(&self.results, index)
+            lo = self.results[index];
+            hi = self.results[index + 1];
+            self.set_index(index + 2);
         } else if index >= N {
-            self.generate_and_set(2);
-            read_u64(&self.results, 0)
+            self.core.generate(&mut self.results);
+            lo = self.results[0];
+            hi = self.results[1];
+            self.set_index(2);
         } else {
-            let x = u64::from(self.results[N - 1]);
-            self.generate_and_set(1);
-            let y = u64::from(self.results[0]);
-            (y << 32) | x
+            lo = self.results[N - 1];
+            self.core.generate(&mut self.results);
+            hi = self.results[0];
+            self.set_index(1);
         }
+        (u64::from(hi) << 32) | u64::from(lo)
     }
 }
 
@@ -242,13 +291,15 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     pub fn fill_bytes(&mut self, dest: &mut [u8]) {
         let mut read_len = 0;
         while read_len < dest.len() {
-            if self.index >= N {
-                self.generate_and_set(0);
+            let mut index = self.index();
+            if index >= N {
+                self.core.generate(&mut self.results);
+                index = 0;
             }
             let (consumed_u32, filled_u8) =
-                fill_via_chunks(&self.results[self.index..], &mut dest[read_len..]);
+                fill_via_chunks(&self.results[index..], &mut dest[read_len..]);
 
-            self.index += consumed_u32;
+            self.set_index(index + consumed_u32);
             read_len += filled_u8;
         }
     }
