@@ -11,7 +11,7 @@ impl Word for u64 {}
 mod sealed {
     /// Sealed trait implemented for `u32` and `u64`.
     pub trait Sealed: Default + Copy + TryFrom<usize> + Eq + core::hash::Hash {
-        type Bytes: Sized + AsRef<[u8]>;
+        type Bytes: Default + Sized + AsRef<[u8]> + AsMut<[u8]>;
 
         fn from_le_bytes(bytes: Self::Bytes) -> Self;
         fn to_le_bytes(self) -> Self::Bytes;

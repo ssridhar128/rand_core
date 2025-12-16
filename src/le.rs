@@ -18,11 +18,11 @@
 //! **`fn next_u32`:**
 //! -   `self.next_u64() as u32`
 //! -   `(self.next_u64() >> 32) as u32`
-//! -   <code>[next_u32_via_fill][](self)</code>
+//! -   <code>[next_word_via_fill][](self)</code>
 //!
 //! **`fn next_u64`:**
 //! -   <code>[next_u64_via_u32][](self)</code>
-//! -   <code>[next_u64_via_fill][](self)</code>
+//! -   <code>[next_word_via_fill][](self)</code>
 //!
 //! **`fn fill_bytes`:**
 //! -   <code>[fill_bytes_via_next_word][](self, dest)</code>
@@ -98,18 +98,13 @@ pub(crate) fn fill_via_chunks<T: Word>(src: &[T], dest: &mut [u8]) -> (usize, us
     (num_chunks, byte_len)
 }
 
-/// Implement `next_u32` via `fill_bytes`, little-endian order.
-pub fn next_u32_via_fill<R: RngCore + ?Sized>(rng: &mut R) -> u32 {
-    let mut buf = [0; 4];
-    rng.fill_bytes(&mut buf);
-    u32::from_le_bytes(buf)
-}
-
-/// Implement `next_u64` via `fill_bytes`, little-endian order.
-pub fn next_u64_via_fill<R: RngCore + ?Sized>(rng: &mut R) -> u64 {
-    let mut buf = [0; 8];
-    rng.fill_bytes(&mut buf);
-    u64::from_le_bytes(buf)
+/// Yield a word using [`RngCore::fill_bytes`]
+///
+/// This may be used to implement `next_u32` or `next_u64`.
+pub fn next_word_via_fill<W: Word, R: RngCore + ?Sized>(rng: &mut R) -> W {
+    let mut buf: W::Bytes = Default::default();
+    rng.fill_bytes(buf.as_mut());
+    W::from_le_bytes(buf)
 }
 
 /// Fills `dst: &mut [u32]` from `src`
