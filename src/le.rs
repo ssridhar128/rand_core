@@ -25,7 +25,7 @@
 //! -   <code>[next_u64_via_fill][](self)</code>
 //!
 //! **`fn fill_bytes`:**
-//! -   <code>[fill_bytes_via_next][](self, dest)</code>
+//! -   <code>[fill_bytes_via_next_word][](self, dest)</code>
 //!
 //! ### Implementing [`SeedableRng`]
 //!
@@ -41,6 +41,7 @@ use crate::SeedableRng;
 pub use crate::word::Word;
 
 /// Implement `next_u64` via `next_u32`, little-endian order.
+#[inline]
 pub fn next_u64_via_u32<R: RngCore + ?Sized>(rng: &mut R) -> u64 {
     // Use LE; we explicitly generate one value before the next.
     let x = u64::from(rng.next_u32());
@@ -48,27 +49,22 @@ pub fn next_u64_via_u32<R: RngCore + ?Sized>(rng: &mut R) -> u64 {
     (y << 32) | x
 }
 
-/// Implement `fill_bytes` via `next_u64` and `next_u32`, little-endian order.
+/// Fill `dst` with bytes using `next_word`
 ///
-/// The fastest way to fill a slice is usually to work as long as possible with
-/// integers. That is why this method mostly uses `next_u64`, and only when
-/// there are 4 or less bytes remaining at the end of the slice it uses
-/// `next_u32` once.
-pub fn fill_bytes_via_next<R: RngCore + ?Sized>(rng: &mut R, dest: &mut [u8]) {
-    let mut left = dest;
-    while left.len() >= 8 {
-        let (l, r) = { left }.split_at_mut(8);
-        left = r;
-        let chunk: [u8; 8] = rng.next_u64().to_le_bytes();
-        l.copy_from_slice(&chunk);
+/// This may be used to implement [`RngCore::fill_bytes`] over `next_u32` or
+/// `next_u64`. Words are used in order of generation. The last word may be
+/// partially discarded.
+#[inline]
+pub fn fill_bytes_via_next_word<W: Word>(dst: &mut [u8], mut next_word: impl FnMut() -> W) {
+    let mut chunks = dst.chunks_exact_mut(size_of::<W>());
+    for chunk in &mut chunks {
+        let val = next_word();
+        chunk.copy_from_slice(val.to_le_bytes().as_ref());
     }
-    let n = left.len();
-    if n > 4 {
-        let chunk: [u8; 8] = rng.next_u64().to_le_bytes();
-        left.copy_from_slice(&chunk[..n]);
-    } else if n > 0 {
-        let chunk: [u8; 4] = rng.next_u32().to_le_bytes();
-        left.copy_from_slice(&chunk[..n]);
+    let rem = chunks.into_remainder();
+    if !rem.is_empty() {
+        let val = next_word().to_le_bytes();
+        rem.copy_from_slice(&val.as_ref()[..rem.len()]);
     }
 }
 
