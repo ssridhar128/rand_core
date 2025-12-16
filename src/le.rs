@@ -29,11 +29,8 @@
 //!
 //! ### Implementing [`SeedableRng`]
 //!
-//! In many cases, [`SeedableRng::Seed`] must be converted to `[u32]` or
-//! `[u64]`. The following helpers are provided:
-//!
-//! - [`read_u32_into`]
-//! - [`read_u64_into`]
+//! In many cases, [`SeedableRng::Seed`] must be converted to `[u32; _]` or
+//! `[u64; _]`. [`read_words`] may be used for this.
 
 use crate::RngCore;
 #[allow(unused)]
@@ -107,35 +104,24 @@ pub fn next_word_via_fill<W: Word, R: RngCore + ?Sized>(rng: &mut R) -> W {
     W::from_le_bytes(buf)
 }
 
-/// Fills `dst: &mut [u32]` from `src`
+/// Reads an array of words from a byte slice
 ///
-/// Reads use Little-Endian byte order, allowing portable reproduction of `dst`
-/// from a byte slice.
-///
-/// # Panics
-///
-/// If `src` has insufficient length (if `src.len() < 4*dst.len()`).
-#[inline]
-#[track_caller]
-pub fn read_u32_into(src: &[u8], dst: &mut [u32]) {
-    assert!(src.len() >= 4 * dst.len());
-    for (out, chunk) in dst.iter_mut().zip(src.chunks_exact(4)) {
-        *out = u32::from_le_bytes(chunk.try_into().unwrap());
-    }
-}
-
-/// Fills `dst: &mut [u64]` from `src`
+/// Words are read from `src` in order, using LE conversion from bytes.
 ///
 /// # Panics
 ///
-/// If `src` has insufficient length (if `src.len() < 8*dst.len()`).
-#[inline]
-#[track_caller]
-pub fn read_u64_into(src: &[u8], dst: &mut [u64]) {
-    assert!(src.len() >= 8 * dst.len());
-    for (out, chunk) in dst.iter_mut().zip(src.chunks_exact(8)) {
-        *out = u64::from_le_bytes(chunk.try_into().unwrap());
+/// Panics if `size_of_val(src) != size_of::<[W; N]>()`.
+#[inline(always)]
+pub fn read_words<W: Word, const N: usize>(src: &[u8]) -> [W; N] {
+    assert_eq!(size_of_val(src), size_of::<[W; N]>());
+    let mut dst = [W::from_usize(0); N];
+    let chunks = src.chunks_exact(size_of::<W>());
+    for (out, chunk) in dst.iter_mut().zip(chunks) {
+        let mut buf: W::Bytes = Default::default();
+        buf.as_mut().copy_from_slice(chunk);
+        *out = W::from_le_bytes(buf);
     }
+    dst
 }
 
 #[cfg(test)]
@@ -186,23 +172,19 @@ mod test {
     fn test_read() {
         let bytes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-        let mut buf = [0u32; 4];
-        read_u32_into(&bytes, &mut buf);
+        let buf: [u32; 4] = read_words(&bytes);
         assert_eq!(buf[0], 0x04030201);
         assert_eq!(buf[3], 0x100F0E0D);
 
-        let mut buf = [0u32; 3];
-        read_u32_into(&bytes[1..13], &mut buf); // unaligned
+        let buf: [u32; 3] = read_words(&bytes[1..13]); // unaligned
         assert_eq!(buf[0], 0x05040302);
         assert_eq!(buf[2], 0x0D0C0B0A);
 
-        let mut buf = [0u64; 2];
-        read_u64_into(&bytes, &mut buf);
+        let buf: [u64; 2] = read_words(&bytes);
         assert_eq!(buf[0], 0x0807060504030201);
         assert_eq!(buf[1], 0x100F0E0D0C0B0A09);
 
-        let mut buf = [0u64; 1];
-        read_u64_into(&bytes[7..15], &mut buf); // unaligned
+        let buf: [u64; 1] = read_words(&bytes[7..15]); // unaligned
         assert_eq!(buf[0], 0x0F0E0D0C0B0A0908);
     }
 }

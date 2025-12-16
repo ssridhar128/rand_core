@@ -39,11 +39,7 @@
 //!     fn from_seed(seed: Self::Seed) -> Self {
 //!         let core = MyRngCore {
 //!             // ...
-//! #            state: {
-//! #                let mut buf = [0u32; 8];
-//! #                rand_core::le::read_u32_into(&seed, &mut buf);
-//! #                buf
-//! #            }
+//! #            state: rand_core::le::read_words(&seed),
 //!         };
 //!         MyRng(BlockRng::new(core))
 //!     }
