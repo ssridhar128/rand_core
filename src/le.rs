@@ -38,6 +38,7 @@
 use crate::RngCore;
 #[allow(unused)]
 use crate::SeedableRng;
+pub use crate::word::Word;
 
 /// Implement `next_u64` via `next_u32`, little-endian order.
 pub fn next_u64_via_u32<R: RngCore + ?Sized>(rng: &mut R) -> u64 {
@@ -70,53 +71,6 @@ pub fn fill_bytes_via_next<R: RngCore + ?Sized>(rng: &mut R, dest: &mut [u8]) {
         left.copy_from_slice(&chunk[..n]);
     }
 }
-
-mod word {
-    pub trait Sealed: Copy {
-        type Bytes: Sized + AsRef<[u8]>;
-
-        fn to_le_bytes(self) -> Self::Bytes;
-
-        fn from_usize(val: usize) -> Self;
-        fn into_usize(self) -> usize;
-    }
-
-    impl Sealed for u32 {
-        type Bytes = [u8; 4];
-
-        fn to_le_bytes(self) -> Self::Bytes {
-            Self::to_le_bytes(self)
-        }
-
-        fn from_usize(val: usize) -> Self {
-            val.try_into().unwrap()
-        }
-        fn into_usize(self) -> usize {
-            self.try_into().unwrap()
-        }
-    }
-
-    impl Sealed for u64 {
-        type Bytes = [u8; 8];
-
-        fn to_le_bytes(self) -> Self::Bytes {
-            Self::to_le_bytes(self)
-        }
-
-        fn from_usize(val: usize) -> Self {
-            val.try_into().unwrap()
-        }
-        fn into_usize(self) -> usize {
-            self.try_into().unwrap()
-        }
-    }
-}
-
-/// A marker trait for supported word types
-///
-/// This is implemented for: `u32`, `u64`.
-pub trait Word: word::Sealed {}
-impl<W: word::Sealed> Word for W {}
 
 /// Fill dest from src
 ///

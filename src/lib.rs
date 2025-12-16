@@ -17,6 +17,7 @@ use core::{fmt, ops::DerefMut};
 
 pub mod block;
 pub mod le;
+mod word;
 
 /// Implementation-level interface for RNGs
 ///
