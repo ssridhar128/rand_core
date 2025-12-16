@@ -1,15 +1,17 @@
-//! # Little-Endian utilities
+//! Utilties to aid trait implementations
+//!
+//! ## Portability
 //!
 //! For cross-platform reproducibility, Little-Endian order (least-significant
 //! part first) has been chosen as the standard for inter-type conversion.
-//! For example, ``next_u64_via_u32`] takes `u32`
-//! values `x, y`, then outputs `(y << 32) | x`.
+//! For example, [`next_u64_via_u32`] generates two `u32` values `x, y`,
+//! then outputs `(y << 32) | x`.
 //!
 //! Byte-swapping (like the std `to_le` functions) is only needed to convert
 //! to/from byte sequences, and since its purpose is reproducibility,
 //! non-reproducible sources (e.g. `OsRng`) need not bother with it.
 //!
-//! ### Implementing [`RngCore`]
+//! ## Implementing [`RngCore`]
 //!
 //! Usually an implementation of [`RngCore`] will implement one of the three
 //! methods over its internal source. The following helpers are provided for
@@ -27,10 +29,58 @@
 //! **`fn fill_bytes`:**
 //! -   <code>[fill_bytes_via_next_word][](self, dest)</code>
 //!
-//! ### Implementing [`SeedableRng`]
+//! ## Implementing [`SeedableRng`]
 //!
 //! In many cases, [`SeedableRng::Seed`] must be converted to `[u32; _]` or
 //! `[u64; _]`. [`read_words`] may be used for this.
+//!
+//! ## Example
+//!
+//! We demonstrate a simple "step RNG":
+//! ```
+//! use rand_core::{RngCore, SeedableRng, utils};
+//!
+//! pub struct Step32Rng {
+//!     state: u32
+//! }
+//!
+//! impl SeedableRng for Step32Rng {
+//!     type Seed = [u8; 4];
+//!
+//!     #[inline]
+//!     fn from_seed(seed: Self::Seed) -> Self {
+//!         // Always use little-endian byte order to ensure portable results
+//!         let state = u32::from_le_bytes(seed);
+//!         Self { state }
+//!     }
+//! }
+//!
+//! impl RngCore for Step32Rng {
+//!     #[inline]
+//!     fn next_u32(&mut self) -> u32 {
+//!         let val = self.state;
+//!         self.state = val + 1;
+//!         val
+//!     }
+//!
+//!     #[inline]
+//!     fn next_u64(&mut self) -> u64 {
+//!         utils::next_u64_via_u32(self)
+//!     }
+//!
+//!     #[inline]
+//!     fn fill_bytes(&mut self, dst: &mut [u8]) {
+//!         utils::fill_bytes_via_next_word(dst, || self.next_u32());
+//!     }
+//! }
+//!
+//! # let mut rng = Step32Rng::seed_from_u64(42);
+//! # assert_eq!(rng.next_u32(), 0x7ba1_8fa4);
+//! # assert_eq!(rng.next_u64(), 0x7ba1_8fa6_7ba1_8fa5);
+//! # let mut buf = [0u8; 5];
+//! # rng.fill_bytes(&mut buf);
+//! # assert_eq!(buf, [0xa7, 0x8f, 0xa1, 0x7b, 0xa8]);
+//! ```
 
 use crate::RngCore;
 #[allow(unused)]
