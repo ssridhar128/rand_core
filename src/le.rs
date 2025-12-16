@@ -65,36 +65,6 @@ pub fn fill_bytes_via_next_word<W: Word>(dst: &mut [u8], mut next_word: impl FnM
     }
 }
 
-/// Fill dest from src
-///
-/// Returns `(n, byte_len)`. `src[..n]` is consumed,
-/// `dest[..byte_len]` is filled. `src[n..]` and `dest[byte_len..]` are left
-/// unaltered.
-pub(crate) fn fill_via_chunks<T: Word>(src: &[T], dest: &mut [u8]) -> (usize, usize) {
-    let size = core::mem::size_of::<T>();
-
-    // Always use little endian for portability of results.
-
-    let mut dest = dest.chunks_exact_mut(size);
-    let mut src = src.iter();
-
-    let zipped = dest.by_ref().zip(src.by_ref());
-    let num_chunks = zipped.len();
-    zipped.for_each(|(dest, src)| dest.copy_from_slice(src.to_le_bytes().as_ref()));
-
-    let byte_len = num_chunks * size;
-    if let Some(src) = src.next() {
-        // We have consumed all full chunks of dest, but not src.
-        let dest = dest.into_remainder();
-        let n = dest.len();
-        if n > 0 {
-            dest.copy_from_slice(&src.to_le_bytes().as_ref()[..n]);
-            return (num_chunks + 1, byte_len + n);
-        }
-    }
-    (num_chunks, byte_len)
-}
-
 /// Yield a word using [`RngCore::fill_bytes`]
 ///
 /// This may be used to implement `next_u32` or `next_u64`.
@@ -127,46 +97,6 @@ pub fn read_words<W: Word, const N: usize>(src: &[u8]) -> [W; N] {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn test_fill_via_u32_chunks() {
-        let src_orig = [1u32, 2, 3];
-
-        let src = src_orig;
-        let mut dst = [0u8; 11];
-        assert_eq!(fill_via_chunks(&src, &mut dst), (3, 11));
-        assert_eq!(dst, [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0]);
-
-        let src = src_orig;
-        let mut dst = [0u8; 13];
-        assert_eq!(fill_via_chunks(&src, &mut dst), (3, 12));
-        assert_eq!(dst, [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0]);
-
-        let src = src_orig;
-        let mut dst = [0u8; 5];
-        assert_eq!(fill_via_chunks(&src, &mut dst), (2, 5));
-        assert_eq!(dst, [1, 0, 0, 0, 2]);
-    }
-
-    #[test]
-    fn test_fill_via_u64_chunks() {
-        let src_orig = [1u64, 2];
-
-        let src = src_orig;
-        let mut dst = [0u8; 11];
-        assert_eq!(fill_via_chunks(&src, &mut dst), (2, 11));
-        assert_eq!(dst, [1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0]);
-
-        let src = src_orig;
-        let mut dst = [0u8; 17];
-        assert_eq!(fill_via_chunks(&src, &mut dst), (2, 16));
-        assert_eq!(dst, [1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
-
-        let src = src_orig;
-        let mut dst = [0u8; 5];
-        assert_eq!(fill_via_chunks(&src, &mut dst), (1, 5));
-        assert_eq!(dst, [1, 0, 0, 0, 0]);
-    }
 
     #[test]
     fn test_read() {
