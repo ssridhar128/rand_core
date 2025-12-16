@@ -137,15 +137,14 @@ pub struct BlockRng<G: Generator> {
 }
 
 // Custom Debug implementation that does not expose the contents of `results`.
-impl<W: Word, const N: usize, G> fmt::Debug for BlockRng<G>
+impl<G> fmt::Debug for BlockRng<G>
 where
-    G: Generator<Output = [W; N]> + fmt::Debug,
+    G: Generator + fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("BlockRng")
             .field("core", &self.core)
-            .field("index", &self.index())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
