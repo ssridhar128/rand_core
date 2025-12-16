@@ -39,7 +39,7 @@
 //!     fn from_seed(seed: Self::Seed) -> Self {
 //!         let core = MyRngCore {
 //!             // ...
-//! #            state: rand_core::le::read_words(&seed),
+//! #            state: rand_core::utils::read_words(&seed),
 //!         };
 //!         MyRng(BlockRng::new(core))
 //!     }
@@ -81,7 +81,7 @@
 //! [`SeedableRng`]: crate::SeedableRng
 //! [`rand::rngs::ReseedingRng`]: https://docs.rs/rand/latest/rand/rngs/struct.ReseedingRng.html
 
-use crate::le::Word;
+use crate::utils::Word;
 use core::fmt;
 
 /// A random (block) generator
