@@ -13,6 +13,7 @@ mod sealed {
     pub trait Sealed: Default + Copy + TryFrom<usize> + Eq + core::hash::Hash {
         type Bytes: Sized + AsRef<[u8]>;
 
+        fn from_le_bytes(bytes: Self::Bytes) -> Self;
         fn to_le_bytes(self) -> Self::Bytes;
 
         fn from_usize(val: usize) -> Self;
@@ -22,13 +23,20 @@ mod sealed {
     impl Sealed for u32 {
         type Bytes = [u8; 4];
 
+        #[inline(always)]
+        fn from_le_bytes(bytes: Self::Bytes) -> Self {
+            Self::from_le_bytes(bytes)
+        }
+        #[inline(always)]
         fn to_le_bytes(self) -> Self::Bytes {
             Self::to_le_bytes(self)
         }
 
+        #[inline(always)]
         fn from_usize(val: usize) -> Self {
             val.try_into().unwrap()
         }
+        #[inline(always)]
         fn into_usize(self) -> usize {
             self.try_into().unwrap()
         }
@@ -37,13 +45,20 @@ mod sealed {
     impl Sealed for u64 {
         type Bytes = [u8; 8];
 
+        #[inline(always)]
+        fn from_le_bytes(bytes: Self::Bytes) -> Self {
+            Self::from_le_bytes(bytes)
+        }
+        #[inline(always)]
         fn to_le_bytes(self) -> Self::Bytes {
             Self::to_le_bytes(self)
         }
 
+        #[inline(always)]
         fn from_usize(val: usize) -> Self {
             val.try_into().unwrap()
         }
+        #[inline(always)]
         fn into_usize(self) -> usize {
             self.try_into().unwrap()
         }
