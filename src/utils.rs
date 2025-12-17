@@ -36,50 +36,48 @@
 //!
 //! ## Example
 //!
-//! We demonstrate a simple "step RNG":
+//! We demonstrate a simple multiplicative congruential generator (MCG), taken
+//! from M.E. O'Neill's blog post
+//! [Does It Beat the Minimal Standard?](https://www.pcg-random.org/posts/does-it-beat-the-minimal-standard.html).
 //! ```
 //! use rand_core::{RngCore, SeedableRng, utils};
 //!
-//! pub struct Step32Rng {
-//!     state: u32
-//! }
+//! pub struct Mcg128(u128);
 //!
-//! impl SeedableRng for Step32Rng {
-//!     type Seed = [u8; 4];
+//! impl SeedableRng for Mcg128 {
+//!     type Seed = [u8; 16];
 //!
 //!     #[inline]
 //!     fn from_seed(seed: Self::Seed) -> Self {
 //!         // Always use little-endian byte order to ensure portable results
-//!         let state = u32::from_le_bytes(seed);
-//!         Self { state }
+//!         Self(u128::from_le_bytes(seed))
 //!     }
 //! }
 //!
-//! impl RngCore for Step32Rng {
+//! impl RngCore for Mcg128 {
 //!     #[inline]
 //!     fn next_u32(&mut self) -> u32 {
-//!         let val = self.state;
-//!         self.state = val + 1;
-//!         val
+//!         (self.next_u64() >> 32) as u32
 //!     }
 //!
 //!     #[inline]
 //!     fn next_u64(&mut self) -> u64 {
-//!         utils::next_u64_via_u32(self)
+//!         self.0 = self.0.wrapping_mul(0x0fc94e3bf4e9ab32866458cd56f5e605);
+//!         (self.0 >> 64) as u64
 //!     }
 //!
 //!     #[inline]
 //!     fn fill_bytes(&mut self, dst: &mut [u8]) {
-//!         utils::fill_bytes_via_next_word(dst, || self.next_u32());
+//!         utils::fill_bytes_via_next_word(dst, || self.next_u64());
 //!     }
 //! }
-//!
-//! # let mut rng = Step32Rng::seed_from_u64(42);
-//! # assert_eq!(rng.next_u32(), 0x7ba1_8fa4);
-//! # assert_eq!(rng.next_u64(), 0x7ba1_8fa6_7ba1_8fa5);
+//! #
+//! # let mut rng = Mcg128::seed_from_u64(42);
+//! # assert_eq!(rng.next_u32(), 3443086493);
+//! # assert_eq!(rng.next_u64(), 3462997187007721903);
 //! # let mut buf = [0u8; 5];
 //! # rng.fill_bytes(&mut buf);
-//! # assert_eq!(buf, [0xa7, 0x8f, 0xa1, 0x7b, 0xa8]);
+//! # assert_eq!(buf, [154, 23, 43, 68, 75]);
 //! ```
 
 use crate::RngCore;
