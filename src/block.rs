@@ -39,11 +39,7 @@
 //!     fn from_seed(seed: Self::Seed) -> Self {
 //!         let core = MyRngCore {
 //!             // ...
-//! #            state: {
-//! #                let mut buf = [0u32; 8];
-//! #                rand_core::le::read_u32_into(&seed, &mut buf);
-//! #                buf
-//! #            }
+//! #            state: rand_core::utils::read_words(&seed),
 //!         };
 //!         MyRng(BlockRng::new(core))
 //!     }
@@ -85,7 +81,7 @@
 //! [`SeedableRng`]: crate::SeedableRng
 //! [`rand::rngs::ReseedingRng`]: https://docs.rs/rand/latest/rand/rngs/struct.ReseedingRng.html
 
-use crate::le::{Word, fill_via_chunks};
+use crate::utils::Word;
 use core::fmt;
 
 /// A random (block) generator
@@ -141,15 +137,14 @@ pub struct BlockRng<G: Generator> {
 }
 
 // Custom Debug implementation that does not expose the contents of `results`.
-impl<W: Word, const N: usize, G> fmt::Debug for BlockRng<G>
+impl<G> fmt::Debug for BlockRng<G>
 where
-    G: Generator<Output = [W; N]> + fmt::Debug,
+    G: Generator + fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("BlockRng")
             .field("core", &self.core)
-            .field("index", &self.index())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -296,11 +291,29 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
                 self.core.generate(&mut self.results);
                 index = 0;
             }
-            let (consumed_u32, filled_u8) =
-                fill_via_chunks(&self.results[index..], &mut dest[read_len..]);
 
-            self.set_index(index + consumed_u32);
-            read_len += filled_u8;
+            let size = core::mem::size_of::<W>();
+            let mut chunks = dest[read_len..].chunks_exact_mut(size);
+            let mut src = self.results[index..].iter();
+
+            let zipped = chunks.by_ref().zip(src.by_ref());
+            let num_chunks = zipped.len();
+            zipped.for_each(|(chunk, src)| chunk.copy_from_slice(src.to_le_bytes().as_ref()));
+            index += num_chunks;
+            read_len += num_chunks * size;
+
+            if let Some(src) = src.next() {
+                // We have consumed all full chunks of dest, but not src.
+                let dest = chunks.into_remainder();
+                let n = dest.len();
+                if n > 0 {
+                    dest.copy_from_slice(&src.to_le_bytes().as_ref()[..n]);
+                    index += 1;
+                    read_len += n;
+                }
+            }
+
+            self.set_index(index);
         }
     }
 }
