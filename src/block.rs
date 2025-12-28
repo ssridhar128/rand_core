@@ -260,22 +260,24 @@ impl<const N: usize, G: Generator<Output = [u32; N]>> BlockRng<G> {
     #[inline]
     pub fn next_u64_from_u32(&mut self) -> u64 {
         let index = self.index();
-        let (lo, hi);
+        let mut new_index;
+        let (mut lo, mut hi);
         if index < N - 1 {
             lo = self.results[index];
             hi = self.results[index + 1];
-            self.set_index(index + 2);
-        } else if index >= N {
-            self.core.generate(&mut self.results);
-            lo = self.results[0];
-            hi = self.results[1];
-            self.set_index(2);
+            new_index = index + 2;
         } else {
             lo = self.results[N - 1];
             self.core.generate(&mut self.results);
             hi = self.results[0];
-            self.set_index(1);
+            new_index = 1;
+            if index >= N {
+                lo = hi;
+                hi = self.results[1];
+                new_index = 2;
+            }
         }
+        self.set_index(new_index);
         (u64::from(hi) << 32) | u64::from(lo)
     }
 }
@@ -285,8 +287,8 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     #[inline]
     pub fn fill_bytes(&mut self, dest: &mut [u8]) {
         let mut read_len = 0;
+        let mut index = self.index();
         while read_len < dest.len() {
-            let mut index = self.index();
             if index >= N {
                 self.core.generate(&mut self.results);
                 index = 0;
@@ -304,17 +306,17 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
 
             if let Some(src) = src.next() {
                 // We have consumed all full chunks of dest, but not src.
-                let dest = chunks.into_remainder();
-                let n = dest.len();
+                let dest_rem = chunks.into_remainder();
+                let n = dest_rem.len();
                 if n > 0 {
-                    dest.copy_from_slice(&src.to_le_bytes().as_ref()[..n]);
+                    dest_rem.copy_from_slice(&src.to_le_bytes().as_ref()[..n]);
                     index += 1;
-                    read_len += n;
+                    debug_assert_eq!(read_len + n, dest.len());
                 }
+                break;
             }
-
-            self.set_index(index);
         }
+        self.set_index(index);
     }
 }
 
