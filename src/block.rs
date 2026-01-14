@@ -6,15 +6,16 @@
 //!
 //! The struct [`BlockRng`] wraps such a [`Generator`] together with an output
 //! buffer and implements several methods (e.g. [`BlockRng::next_word`]) to
-//! assist in the implementation of [`RngCore`]. Note that (unlike in earlier
-//! versions of `rand_core`) [`BlockRng`] itself does not implement [`RngCore`]
+//! assist in the implementation of [`TryRngCore`]. Note that (unlike in earlier
+//! versions of `rand_core`) [`BlockRng`] itself does not implement [`TryRngCore`]
 //! since in practice we found it was always beneficial to use a wrapper type
 //! over [`BlockRng`].
 //!
 //! # Example
 //!
 //! ```
-//! use rand_core::{RngCore, SeedableRng};
+//! use core::convert::Infallible;
+//! use rand_core::{RngCore, SeedableRng, TryRngCore};
 //! use rand_core::block::{Generator, BlockRng};
 //!
 //! struct MyRngCore {
@@ -45,24 +46,26 @@
 //!     }
 //! }
 //!
-//! impl RngCore for MyRng {
+//! impl TryRngCore for MyRng {
+//!     type Error = Infallible;
+//!
 //!     #[inline]
-//!     fn next_u32(&mut self) -> u32 {
-//!         self.0.next_word()
+//!     fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+//!         Ok(self.0.next_word())
 //!     }
 //!
 //!     #[inline]
-//!     fn next_u64(&mut self) -> u64 {
-//!         self.0.next_u64_from_u32()
+//!     fn try_next_u64(&mut self) -> Result<u64, Infallible> {
+//!         Ok(self.0.next_u64_from_u32())
 //!     }
 //!
 //!     #[inline]
-//!     fn fill_bytes(&mut self, bytes: &mut [u8]) {
-//!         self.0.fill_bytes(bytes)
+//!     fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), Infallible> {
+//!         Ok(self.0.fill_bytes(bytes))
 //!     }
 //! }
 //!
-//! // And if applicable: impl CryptoRng for MyRng {}
+//! // And if applicable: impl TryCryptoRng for MyRng {}
 //!
 //! let mut rng = MyRng::seed_from_u64(0);
 //! println!("First value: {}", rng.next_u32());
@@ -74,10 +77,10 @@
 //! The [`Generator`] trait supports usage of [`rand::rngs::ReseedingRng`].
 //! This requires that [`SeedableRng`] be implemented on the "core" generator.
 //! Additionally, it may be useful to implement [`CryptoGenerator`].
-//! (This is in addition to any implementations on an [`RngCore`] type.)
+//! (This is in addition to any implementations on an [`TryRngCore`] type.)
 //!
 //! [`Generator`]: crate::block::Generator
-//! [`RngCore`]: crate::RngCore
+//! [`TryRngCore`]: crate::TryRngCore
 //! [`SeedableRng`]: crate::SeedableRng
 //! [`rand::rngs::ReseedingRng`]: https://docs.rs/rand/latest/rand/rngs/struct.ReseedingRng.html
 
@@ -115,7 +118,7 @@ pub trait Generator {
 /// `#[cfg(test)]` attribute to ensure that mock "crypto" generators cannot be
 /// used in production.
 ///
-/// See [`CryptoRng`](crate::CryptoRng) docs for more information.
+/// See [`TryCryptoRng`](crate::TryCryptoRng) docs for more information.
 pub trait CryptoGenerator: Generator {}
 
 /// RNG functionality for a block [`Generator`]

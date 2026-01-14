@@ -11,22 +11,22 @@
 //! to/from byte sequences, and since its purpose is reproducibility,
 //! non-reproducible sources (e.g. `OsRng`) need not bother with it.
 //!
-//! ## Implementing [`RngCore`]
+//! ## Implementing [`TryRngCore`]
 //!
-//! Usually an implementation of [`RngCore`] will implement one of the three
+//! Usually an implementation of [`TryRngCore`] will implement one of the three
 //! methods over its internal source. The following helpers are provided for
 //! the remaining implementations.
 //!
-//! **`fn next_u32`:**
+//! **`fn try_next_u32`:**
 //! -   `self.next_u64() as u32`
 //! -   `(self.next_u64() >> 32) as u32`
 //! -   <code>[next_word_via_fill][](self)</code>
 //!
-//! **`fn next_u64`:**
+//! **`fn try_next_u64`:**
 //! -   <code>[next_u64_via_u32][](self)</code>
 //! -   <code>[next_word_via_fill][](self)</code>
 //!
-//! **`fn fill_bytes`:**
+//! **`fn try_fill_bytes`:**
 //! -   <code>[fill_bytes_via_next_word][](self, dest)</code>
 //!
 //! ## Implementing [`SeedableRng`]
@@ -40,7 +40,8 @@
 //! from M.E. O'Neill's blog post
 //! [Does It Beat the Minimal Standard?](https://www.pcg-random.org/posts/does-it-beat-the-minimal-standard.html).
 //! ```
-//! use rand_core::{RngCore, SeedableRng, utils};
+//! use core::convert::Infallible;
+//! use rand_core::{RngCore, SeedableRng, TryRngCore, utils};
 //!
 //! pub struct Mcg128(u128);
 //!
@@ -54,21 +55,23 @@
 //!     }
 //! }
 //!
-//! impl RngCore for Mcg128 {
+//! impl TryRngCore for Mcg128 {
+//!     type Error = Infallible;
+//!
 //!     #[inline]
-//!     fn next_u32(&mut self) -> u32 {
-//!         (self.next_u64() >> 32) as u32
+//!     fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+//!         Ok((self.next_u64() >> 32) as u32)
 //!     }
 //!
 //!     #[inline]
-//!     fn next_u64(&mut self) -> u64 {
+//!     fn try_next_u64(&mut self) -> Result<u64, Infallible> {
 //!         self.0 = self.0.wrapping_mul(0x0fc94e3bf4e9ab32866458cd56f5e605);
-//!         (self.0 >> 64) as u64
+//!         Ok((self.0 >> 64) as u64)
 //!     }
 //!
 //!     #[inline]
-//!     fn fill_bytes(&mut self, dst: &mut [u8]) {
-//!         utils::fill_bytes_via_next_word(dst, || self.next_u64());
+//!     fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Infallible> {
+//!         utils::fill_bytes_via_next_word(dst, || self.try_next_u64())
 //!     }
 //! }
 //! #
@@ -80,46 +83,47 @@
 //! # assert_eq!(buf, [154, 23, 43, 68, 75]);
 //! ```
 
-use crate::RngCore;
-#[allow(unused)]
-use crate::SeedableRng;
 pub use crate::word::Word;
+#[allow(unused)]
+use crate::{SeedableRng, TryRngCore};
 
-/// Implement `next_u64` via `next_u32`, little-endian order.
+/// Generate a `u64` using `next_u32`, little-endian order.
 #[inline]
-pub fn next_u64_via_u32<R: RngCore + ?Sized>(rng: &mut R) -> u64 {
+pub fn next_u64_via_u32<R: TryRngCore + ?Sized>(rng: &mut R) -> Result<u64, R::Error> {
     // Use LE; we explicitly generate one value before the next.
-    let x = u64::from(rng.next_u32());
-    let y = u64::from(rng.next_u32());
-    (y << 32) | x
+    let x = u64::from(rng.try_next_u32()?);
+    let y = u64::from(rng.try_next_u32()?);
+    Ok((y << 32) | x)
 }
 
 /// Fill `dst` with bytes using `next_word`
 ///
-/// This may be used to implement [`RngCore::fill_bytes`] over `next_u32` or
+/// This may be used to implement `fill_bytes` over `next_u32` or
 /// `next_u64`. Words are used in order of generation. The last word may be
 /// partially discarded.
 #[inline]
-pub fn fill_bytes_via_next_word<W: Word>(dst: &mut [u8], mut next_word: impl FnMut() -> W) {
+pub fn fill_bytes_via_next_word<E, W: Word>(
+    dst: &mut [u8],
+    mut next_word: impl FnMut() -> Result<W, E>,
+) -> Result<(), E> {
     let mut chunks = dst.chunks_exact_mut(size_of::<W>());
     for chunk in &mut chunks {
-        let val = next_word();
+        let val = next_word()?;
         chunk.copy_from_slice(val.to_le_bytes().as_ref());
     }
     let rem = chunks.into_remainder();
     if !rem.is_empty() {
-        let val = next_word().to_le_bytes();
+        let val = next_word()?.to_le_bytes();
         rem.copy_from_slice(&val.as_ref()[..rem.len()]);
     }
+    Ok(())
 }
 
-/// Yield a word using [`RngCore::fill_bytes`]
-///
-/// This may be used to implement `next_u32` or `next_u64`.
-pub fn next_word_via_fill<W: Word, R: RngCore + ?Sized>(rng: &mut R) -> W {
+/// Generate a `u32` or `u64` word using `fill_bytes`
+pub fn next_word_via_fill<W: Word, R: TryRngCore>(rng: &mut R) -> Result<W, R::Error> {
     let mut buf: W::Bytes = Default::default();
-    rng.fill_bytes(buf.as_mut());
-    W::from_le_bytes(buf)
+    rng.try_fill_bytes(buf.as_mut())?;
+    Ok(W::from_le_bytes(buf))
 }
 
 /// Reads an array of words from a byte slice
