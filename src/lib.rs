@@ -59,7 +59,10 @@ pub trait RngCore: TryRngCore<Error = Infallible> {
     fn fill_bytes(&mut self, dst: &mut [u8]);
 }
 
-impl<R: TryRngCore<Error = Infallible>> RngCore for R {
+impl<R> RngCore for R
+where
+    R: TryRngCore<Error = Infallible> + ?Sized,
+{
     #[inline]
     fn next_u32(&mut self) -> u32 {
         match self.try_next_u32() {
@@ -86,9 +89,9 @@ impl<R: TryRngCore<Error = Infallible>> RngCore for R {
 ///
 /// This is a convenient trait alias for <code>[TryCryptoRng]<Error = [Infallible]></code>.
 /// It is equivalent to the trait sum <code>[RngCore] + [TryCryptoRng]</code>.
-pub trait CryptoRng: TryCryptoRng<Error = Infallible> {}
+pub trait CryptoRng: RngCore + TryCryptoRng<Error = Infallible> {}
 
-impl<R: TryCryptoRng<Error = Infallible>> CryptoRng for R {}
+impl<R> CryptoRng for R where R: TryCryptoRng<Error = Infallible> + ?Sized {}
 
 /// Base trait for random number generators and random data sources
 ///
