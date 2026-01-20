@@ -144,7 +144,7 @@ impl<R> CryptoRng for R where R: TryCryptoRng<Error = Infallible> + ?Sized {}
 ///
 /// Many implementations of `TryRngCore` (those with
 /// <code>type Error = [Infallible][]</code>) already implement [`RngCore`]; in
-/// other cases [`Self::unwrap_err`] may be used to obtain an implementation of
+/// other cases [`UnwrapErr`] may be used to obtain an implementation of
 /// [`RngCore`].
 ///
 /// # Implementing `TryRngCore`
@@ -193,14 +193,6 @@ pub trait TryRngCore {
     fn try_next_u64(&mut self) -> Result<u64, Self::Error>;
     /// Fill `dst` entirely with random data.
     fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error>;
-
-    /// Wrap RNG with the [`UnwrapErr`] wrapper.
-    fn unwrap_err(self) -> UnwrapErr<Self>
-    where
-        Self: Sized,
-    {
-        UnwrapErr(self)
-    }
 }
 
 // Note that, unfortunately, this blanket impl prevents us from implementing
@@ -258,6 +250,30 @@ impl<R: DerefMut> TryCryptoRng for R where R::Target: TryCryptoRng {}
 
 /// Wrapper around [`TryRngCore`] implementation which implements [`RngCore`]
 /// by panicking on potential errors.
+///
+/// # Examples
+///
+/// ```rust
+/// # use rand_core::{UnwrapErr, TryRngCore, RngCore};
+/// fn with_try_rng<R: TryRngCore>(mut rng: R) {
+///     // rng does not impl RngCore:
+///     let _ = rng.try_next_u32(); // okay
+///     // let _ = rng.next_u32(); // error
+///
+///     // An adapter borrowing rng:
+///     let _ = UnwrapErr(&mut rng).next_u32();
+///
+///     // An adapter moving rng:
+///     let mut rng = UnwrapErr(rng);
+///     let _ = rng.next_u32();
+/// }
+///
+/// fn call_with_unsized_try_rng<R: TryRngCore + ?Sized>(rng: &mut R) {
+///     // R is unsized, thus we must use &mut R:
+///     let mut rng = UnwrapErr(rng);
+///     let _ = rng.next_u32();
+/// }
+/// ```
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct UnwrapErr<R: TryRngCore>(pub R);
 
@@ -618,7 +634,7 @@ mod test {
         }
 
         fn my_api(rng: &mut (impl TryRngCore + ?Sized)) -> bool {
-            let mut infallible_rng = rng.unwrap_err();
+            let mut infallible_rng = UnwrapErr(rng);
             third_party_api(&mut infallible_rng)
         }
 
@@ -634,7 +650,7 @@ mod test {
         }
 
         fn my_api(rng: &mut (impl TryCryptoRng + ?Sized)) -> bool {
-            let mut infallible_rng = rng.unwrap_err();
+            let mut infallible_rng = UnwrapErr(rng);
             third_party_api(&mut infallible_rng)
         }
 
@@ -659,7 +675,7 @@ mod test {
         }
 
         let mut rng = FourRng;
-        let mut rng = (&mut rng).unwrap_err();
+        let mut rng = UnwrapErr(&mut rng);
 
         assert_eq!(rng.next_u32(), 4);
         {
