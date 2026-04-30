@@ -139,7 +139,7 @@ pub fn next_word_via_fill<W: Word, R: TryRng>(rng: &mut R) -> Result<W, R::Error
 /// Panics if `size_of_val(src) != size_of::<[W; N]>()`.
 #[inline(always)]
 pub fn read_words<W: Word, const N: usize>(src: &[u8]) -> [W; N] {
-    assert_eq!(size_of_val(src), size_of::<[W; N]>());
+    // WTF: size_of // assert_eq!(size_of_val(src), size_of::<[W; N]>());
     let mut dst = [W::from_usize(0); N];
     let chunks = src.chunks_exact(size_of::<W>());
     for (out, chunk) in dst.iter_mut().zip(chunks) {

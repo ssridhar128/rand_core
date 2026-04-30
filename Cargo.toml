@@ -14,6 +14,12 @@ edition = "2024"
 rust-version = "1.85"
 exclude = ["/.github"]
 
+[dependencies]
+flux-rs = { git  = "https://github.com/flux-rs/flux.git" }
+
+[package.metadata.flux]
+enabled = true
+
 [lints.rust]
 missing_docs = "warn"
 missing_debug_implementations = "warn"

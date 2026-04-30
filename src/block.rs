@@ -76,6 +76,7 @@
 
 use crate::utils::Word;
 use core::fmt;
+use flux_rs::spec;
 
 /// A random (block) generator
 pub trait Generator {
@@ -111,6 +112,7 @@ pub trait Generator {
 ///
 /// [`Rng`]: crate::Rng
 #[derive(Clone)]
+
 pub struct BlockRng<G: Generator> {
     results: G::Output,
     /// The *core* part of the RNG, implementing the `generate` function.
@@ -139,6 +141,7 @@ impl<W: Word + Default, const N: usize, G: Generator<Output = [W; N]>> BlockRng<
     /// Create a new `BlockRng` from an existing RNG implementing
     /// `Generator`. Results will be generated on first use.
     #[inline]
+    #[spec(fn(core: G) -> BlockRng<G>[N] requires 0 < N)]
     pub fn new(core: G) -> BlockRng<G> {
         let mut results = [W::default(); N];
         results[0] = W::from_usize(N);
@@ -151,6 +154,7 @@ impl<W: Word + Default, const N: usize, G: Generator<Output = [W; N]>> BlockRng<
     /// [`Self::remaining_results`].
     ///
     /// Returns `None` if `remaining_results` is too long.
+
     pub fn reconstruct(core: G, remaining_results: &[W]) -> Option<Self> {
         let mut results = [W::default(); N];
         if remaining_results.len() < N {
@@ -175,6 +179,8 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
         self.results[0].into_usize()
     }
 
+    #[spec(fn(self: &mut BlockRng<G>[@n], index: usize{0 < index && index <= N}) 
+           ensures self: BlockRng<G>[n])]
     #[inline(always)]
     fn set_index(&mut self, index: usize) {
         debug_assert!(0 < index && index <= N);
@@ -191,6 +197,7 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     ///
     /// This method will panic if `n >= N` where `N` is the buffer size (in
     /// words).
+    #[flux_rs::trusted(reason = "flux ICE")]
     #[inline]
     pub fn reset_and_skip(&mut self, n: usize) {
         if n == 0 {
@@ -229,6 +236,7 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
 
     /// Generate the next word (e.g. `u32`)
     #[inline]
+    #[flux_rs::trusted(reason = "flux ICE")]
     pub fn next_word(&mut self) -> W {
         let mut index = self.index();
         if index >= N {
@@ -245,6 +253,7 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
 impl<const N: usize, G: Generator<Output = [u32; N]>> BlockRng<G> {
     /// Generate a `u64` from two `u32` words
     #[inline]
+    #[flux_rs::trusted(reason = "flux ICE")]
     pub fn next_u64_from_u32(&mut self) -> u64 {
         let index = self.index();
         let mut new_index;
@@ -268,7 +277,7 @@ impl<const N: usize, G: Generator<Output = [u32; N]>> BlockRng<G> {
         (u64::from(hi) << 32) | u64::from(lo)
     }
 }
-
+#[flux_rs::trusted(reason = "flux ICE")]
 impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
     /// Fill `dest`
     #[inline]
