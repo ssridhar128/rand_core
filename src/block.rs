@@ -141,7 +141,7 @@ impl<W: Word + Default, const N: usize, G: Generator<Output = [W; N]>> BlockRng<
     /// Create a new `BlockRng` from an existing RNG implementing
     /// `Generator`. Results will be generated on first use.
     #[inline]
-    #[spec(fn(core: G) -> BlockRng<G>[N] requires 0 < N)]
+    #[spec(fn(core: G) -> BlockRng<G> requires 0 < N)]
     pub fn new(core: G) -> BlockRng<G> {
         let mut results = [W::default(); N];
         results[0] = W::from_usize(N);
@@ -179,8 +179,6 @@ impl<W: Word, const N: usize, G: Generator<Output = [W; N]>> BlockRng<G> {
         self.results[0].into_usize()
     }
 
-    #[spec(fn(self: &mut BlockRng<G>[@n], index: usize{0 < index && index <= N}) 
-           ensures self: BlockRng<G>[n])]
     #[inline(always)]
     fn set_index(&mut self, index: usize) {
         debug_assert!(0 < index && index <= N);
