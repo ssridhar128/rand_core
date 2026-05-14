@@ -77,6 +77,7 @@
 use crate::utils::Word;
 use core::fmt;
 use flux_rs::spec;
+use flux_rs::attrs::*;
 
 /// A random (block) generator
 pub trait Generator {
